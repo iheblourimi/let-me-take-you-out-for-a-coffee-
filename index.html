@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#121011">
 <title>A Coffee Invitation ☕️</title>
-<!-- Hotjar Tracking Code for MEETING -->
+<!-- Hotjar Tracking Code for Meet -->
 <script>
     (function(h,o,t,j,a,r){
         h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
-        h._hjSettings={hjid:6784039,hjsv:6};
+        h._hjSettings={hjid:6784056,hjsv:6};
         a=o.getElementsByTagName('head')[0];
         r=o.createElement('script');r.async=1;
         r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;
@@ -418,14 +418,44 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       .then(function (r) {
         return r.json().then(function (j) { return j; }, function () { return null; }).then(function (j) {
           var ok = r.ok && !(j && (j.success === false || j.success === 'false'));
+          dbg('FormSubmit AJAX « ' + (fields._subject || '') + ' » → HTTP ' + r.status + ' · ' + (j ? JSON.stringify(j) : '(pas de JSON)'), ok);
           if (!ok) lastSendError = 'HTTP ' + r.status + (j && j.message ? ' — ' + j.message : '');
           return ok;
         });
       })
-      .catch(function (e) { lastSendError = (e && e.name === 'AbortError') ? 'timeout' : 'network: ' + (e && e.message || e); return false; })
+      .catch(function (e) { lastSendError = (e && e.name === 'AbortError') ? 'timeout' : 'network: ' + (e && e.message || e); dbg('FormSubmit AJAX « ' + (fields._subject || '') + ' » → ÉCHEC réseau : ' + lastSendError + ' (bloqueur de pub ? réseau ?)', false); return false; })
       .then(function (ok) { clearTimeout(timer); if (!ok) try { console.warn('[FormSubmit]', lastSendError); } catch (e) {} return ok; });
   }
   var lastSendError = '';
+  // ─── Diagnostic panel: only when the address ends with ?debug ───────────
+  // Shows what FormSubmit really answers (and whether the tracking script
+  // loaded), on phone or computer. Read-only: it starts nothing. Nobody else sees it.
+  var DEBUG = /[?&]debug\b/.test(location.search), dbgBox = null;
+  function dbg(msg, ok) {
+    try { console.log('[debug]', msg); } catch (e) {}
+    if (!DEBUG) return;
+    if (!dbgBox) {
+      dbgBox = document.createElement('div');
+      dbgBox.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;max-height:45vh;overflow:auto;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,.88);color:#eee;font:12px/1.45 ui-monospace,Menlo,monospace;box-shadow:0 0 0 1px #555';
+      var bt = document.createElement('button'); bt.type = 'button'; bt.textContent = 'Envoyer un email test';
+      bt.style.cssText = 'margin:0 8px 8px 0;padding:6px 10px;font:inherit;cursor:pointer';
+      bt.onclick = function () { send({ _subject: '🧪 Test FormSubmit — ' + new Date().toLocaleTimeString('fr-FR'), 'Test': 'Si tu lis ceci, l’envoi fonctionne.' }, false, 20000); };
+      var hide = document.createElement('button'); hide.type = 'button'; hide.textContent = 'Réduire';
+      hide.style.cssText = bt.style.cssText;
+      hide.onclick = function () { var c = dbgBox.style.maxHeight === '38px'; dbgBox.style.maxHeight = c ? '45vh' : '38px'; dbgBox.style.overflow = c ? 'auto' : 'hidden'; hide.textContent = c ? 'Réduire' : 'Agrandir'; };
+      dbgBox.appendChild(bt); dbgBox.appendChild(hide); document.body.appendChild(dbgBox);
+    }
+    var l = document.createElement('div'); l.textContent = (ok === true ? '✅ ' : ok === false ? '❌ ' : '• ') + new Date().toLocaleTimeString('fr-FR') + '  ' + msg; dbgBox.appendChild(l);
+  }
+  if (DEBUG) {
+    dbg('Site : ' + location.href);
+    dbg('Hotjar ID dans la page : ' + ((window._hjSettings || {}).hjid || 'aucun'));
+    setTimeout(function () {
+      var res = (performance.getEntriesByType ? performance.getEntriesByType('resource') : []).filter(function (e) { return /hotjar/.test(e.name); });
+      dbg('Script Hotjar : ' + (res.length ? 'chargé (' + res.map(function (e) { return e.name.split('/').pop(); }).join(', ') + ')' : 'NON chargé — bloqueur de pub, Brave ou réseau ?'), !!res.length);
+      dbg('Hotjar actif : ' + (window.hjSiteSettings ? 'oui (site ' + window.hjSiteSettings.site_id + ')' : 'non — le script n’a pas démarré'), !!window.hjSiteSettings);
+    }, 6000);
+  }
   // The confirmation gets two quiet tries before anything is said to her.
   // Two independent routes to the same inbox:
   //  1. FormSubmit's AJAX endpoint (the usual one);
@@ -440,7 +470,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       var f = document.createElement('form'); f.method = 'POST'; f.action = 'https://formsubmit.co/' + EMAIL; f.target = name; f.acceptCharset = 'UTF-8'; f.style.display = 'none';
       var all = Object.assign({ _template: 'table', _captcha: 'false', 'Envoyé le': new Date().toLocaleString('fr-FR') }, fields);
       Object.keys(all).forEach(function (k) { var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = String(all[k]); f.appendChild(i); });
-      function end(ok) { if (done) return; done = true; clearTimeout(t); setTimeout(function () { ifr.remove(); f.remove(); }, 4000); resolve(ok); }
+      function end(ok) { if (done) return; done = true; dbg('Formulaire de secours → ' + (ok ? 'page FormSubmit chargée (réponse illisible depuis le site)' : 'échec : ' + lastSendError), ok); clearTimeout(t); setTimeout(function () { ifr.remove(); f.remove(); }, 4000); resolve(ok); }
       var t = setTimeout(function () { lastSendError += ' · form: timeout'; end(false); }, timeoutMs);
       document.body.appendChild(ifr); document.body.appendChild(f);
       setTimeout(function () { ifr.addEventListener('load', function () { end(true); }); try { f.submit(); } catch (e) { lastSendError += ' · form: ' + e.message; end(false); } }, 30);
@@ -467,20 +497,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   function track(event, label, detail, props) {
     LOG.push({ t: hms(), ts: new Date().toISOString(), ms: Date.now() - T0, event: event, page: PAGE, label: label, detail: detail || '', props: props || null });
   }
-  function pageView(path, title) { PAGE = path; track('page_view', 'Voit l’écran « ' + title + ' »', path, { path: path, title: title }); hjScreen(path); }
-  // Hotjar: every interface lives on this one page, so each screen is announced to
-  // Hotjar as its own virtual page (…/open, …/question, …/yes, …/date, …/time,
-  // …/invitation, …/confirmed). Heatmaps and recordings can then be filtered per screen.
-  var HJ_NAMES = { '/open': 'open', '/': 'question', '/yes': 'yes', '/date': 'date', '/time': 'time', '/confirm': 'invitation', '/final': 'confirmed' };
-  function hjScreen(path) {
-    var name = HJ_NAMES[path] || path.replace(/^\//, '');
-    try {
-      if (!window.hj) return;
-      var base = location.pathname.replace(/[^\/]*$/, '');
-      window.hj('stateChange', base + name);
-      window.hj('event', 'screen_' + name);
-    } catch (e) {}
-  }
+  function pageView(path, title) { PAGE = path; track('page_view', 'Voit l’écran « ' + title + ' »', path, { path: path, title: title }); }
   function device() { var w = innerWidth, h = innerHeight, touch = matchMedia('(pointer:coarse)').matches; var k = w < 600 ? 'Téléphone' : (w < 1024 || touch) ? 'Tablette' : 'Ordinateur'; return k + ' · écran ' + w + '×' + h; }
   function browser() { var u = navigator.userAgent; var b = /Edg\//.test(u) ? 'Edge' : /SamsungBrowser/.test(u) ? 'Samsung Internet' : /CriOS|Chrome\//.test(u) ? 'Chrome' : /FxiOS|Firefox\//.test(u) ? 'Firefox' : /Safari\//.test(u) ? 'Safari' : 'Autre'; var o = /iPhone|iPad|iPod/.test(u) ? 'iOS' : /Android/.test(u) ? 'Android' : /Mac OS X/.test(u) ? 'macOS' : /Windows/.test(u) ? 'Windows' : 'Autre'; return b + ' · ' + o; }
   function origin() { try { return document.referrer ? new URL(document.referrer).hostname : 'Lien ouvert directement'; } catch (e) { return 'Inconnue'; } }
@@ -584,7 +601,6 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   // browser remembers which date + time was already sent, so a double tap, a
   // reload or going back and confirming the same evening again never sends twice.
   var SENT_KEY = 'confirmation_email_sent', sending = false;
-  function hjEvent(name) { try { if (window.hj) window.hj('event', name); } catch (e) {} }
   function confirmInvitation() {
     if (sending || !S.day || !S.time) return;
     var btn = $('[data-act="official"]'), oops = $('.oops');
@@ -593,7 +609,6 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     if (!S.confirmed || S.confirmedKey !== key) {
       S.confirmed = true; S.confirmedKey = key;
       track('invitation_confirmed', 'Clic sur « Make It Official »', 'rendez-vous confirmé : ' + frDate() + ' à ' + S.time, info);
-      hjEvent('invitation_confirmed');
     }
     if (store(SENT_KEY) === key) { go('final', 700); return; }
     sending = true;
@@ -614,11 +629,9 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       if (ok) {
         store(SENT_KEY, key); sentUpTo = LOG.length;
         track('answer_sent', 'Confirmation envoyée', frDate() + ' à ' + S.time, info);
-        hjEvent('answer_sent');
         go('final', 700);
       } else {
         track('answer_send_failed', 'La confirmation n’a pas pu partir', lastSendError, Object.assign({ reason: lastSendError }, info));
-        hjEvent('answer_send_failed');
         if (oops) oops.textContent = 'Something went wrong. Please try again.';
       }
     });
