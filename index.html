@@ -513,11 +513,46 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     return f;
   }
   function events() { return JSON.stringify(LOG.map(function (e) { var o = { event: e.event, ts: e.ts, t: e.t, ms: e.ms, page: e.page, visitor_id: VID, session_id: SID }; if (e.props) o.props = e.props; return o; })); }
+  // Any e-mail: AJAX first, then the classic form route if AJAX fails.
+  function sendAny(fields) {
+    return send(fields, false, 15000).then(function (ok) {
+      if (ok) return true;
+      var why = lastSendError;
+      return sendViaForm(Object.assign({}, fields, { 'Note technique': 'envoyé par le formulaire de secours (AJAX : ' + why + ')' }), 20000);
+    });
+  }
+  // When she leaves, the page may close at once: a beacon to FormSubmit's plain
+  // form address is the one request browsers promise to deliver after closing.
+  function sendOnLeave(fields) {
+    var all = Object.assign({ _template: 'table', _captcha: 'false', 'Envoyé le': new Date().toLocaleString('fr-FR') }, fields);
+    var data = new URLSearchParams(); Object.keys(all).forEach(function (k) { data.append(k, String(all[k])); });
+    var ok = false;
+    try { ok = navigator.sendBeacon && navigator.sendBeacon('https://formsubmit.co/' + EMAIL, data); } catch (e) {}
+    if (!ok) try { fetch('https://formsubmit.co/' + EMAIL, { method: 'POST', mode: 'no-cors', keepalive: true, body: data }); } catch (e) {}
+    dbg('Rapport de départ → ' + (ok ? 'confié au navigateur (beacon)' : 'envoyé en secours (fetch)'), true);
+  }
+  // What she decided, in a few lines at the top of every e-mail.
+  var CLICK_NAMES = { open_clicked: 'OPEN', no_clicked: 'NON', yes_clicked: 'OUI', continue_clicked: 'Continue', month_changed: 'Mois', date_selected: 'Jour', time_selected: 'Heure', see_meeting_clicked: 'See our meeting', choice_changed: 'Change my choice', invitation_confirmed: 'Make It Official', music_paused: 'Musique pause', music_resumed: 'Musique reprise' };
+  function clicks() {
+    var c = {}, order = [];
+    LOG.forEach(function (e) { var n = CLICK_NAMES[e.event]; if (!n) return; if (!c[n]) { c[n] = 0; order.push(n); } c[n]++; });
+    return order.length ? order.map(function (n) { return n + ' ×' + c[n]; }).join(' · ') : 'aucun';
+  }
+  function summary() {
+    return {
+      'Réponse finale': S.confirmed ? 'OUI — rendez-vous confirmé ✅' : S.saidYes ? 'OUI (pas encore confirmé)' : 'Pas encore répondu',
+      'Date du rendez-vous': S.day ? frDate() : '—',
+      'Heure du rendez-vous': S.time || '—',
+      'Clics sur les boutons': clicks(),
+      'Clics sur NON': String(S.attempts),
+      'Durée': dur()
+    };
+  }
   function report(final) {
     if (LOG.length <= sentUpTo) return;
     sentUpTo = LOG.length;
-    var body = Object.assign({ _subject: '📋 Visite #' + VID + ' (n° ' + VISIT + ') — ' + state(), 'Résultat': state(), 'Durée': dur(), 'Clics sur NON': String(S.attempts) }, S.day && S.time ? { 'Rendez-vous choisi': frDate() + ' à ' + S.time } : {}, base(), journey());
-    send(body, final);
+    var body = Object.assign({ _subject: '📋 Visite #' + VID + ' (n° ' + VISIT + ') — ' + state() }, summary(), base(), journey());
+    if (final) sendOnLeave(body); else sendAny(body);
   }
   function leave() { track('session_ended', 'Quitte la page', 'après ' + dur(), { duration_s: Math.round((Date.now() - T0) / 1000) }); report(true); }
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') leave(); else track('session_resumed', 'Revient sur la page'); });
@@ -617,13 +652,8 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     track('answer_send_attempted', 'Envoi de la confirmation', frDate() + ' à ' + S.time, info);
     // Same e-mail as before: the answer, the evening, the visitor and her whole journey.
     sendConfirmation(Object.assign({
-      _subject: '✅ Rendez-vous confirmé : ' + frDate() + ' à ' + S.time,
-      'Réponse': 'OUI — confirmé',
-      'Jour': frDate(),
-      'Heure': S.time,
-      'Clics sur NON': String(S.attempts),
-      'Durée jusqu’ici': dur()
-    }, base(), journey())).then(function (ok) {
+      _subject: '✅ Rendez-vous confirmé : ' + frDate() + ' à ' + S.time
+    }, summary(), base(), journey())).then(function (ok) {
       sending = false;
       if (btn) { btn.classList.remove('busy'); btn.removeAttribute('aria-busy'); }
       if (ok) {
@@ -643,7 +673,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     go('knew', 750);
     S.saidYes = true;
     track('yes_clicked', 'Clic sur OUI', viaNo ? 'via le bouton NON devenu « Fine — yes »' : S.attempts ? 'après ' + S.attempts + ' tentative' + (S.attempts > 1 ? 's' : '') + ' sur NON' : 'du premier coup', { no_attempts: S.attempts, via_no: !!viaNo });
-    if (!S.sentYes) { S.sentYes = true; send(Object.assign({ _subject: '☕️ Elle a dit OUI à ton invitation (#' + VID + ')', 'Réponse': 'OUI', 'Clics sur NON': String(S.attempts), 'Après': dur() }, base())); }
+    if (!S.sentYes) { S.sentYes = true; sendAny(Object.assign({ _subject: '☕️ Elle a dit OUI à ton invitation (#' + VID + ')' }, summary(), base(), journey())); }
   }
 
   function go(name, wait) {
@@ -939,7 +969,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   track('session_started', 'Arrive sur l’invitation', device(), { referrer: origin(), lang: navigator.language || '' });
   pageView('/open', 'Open');
   motes.into(gate); motes.start(); motes.mood('gate');
-  setTimeout(function () { send(Object.assign({ _subject: '👀 Nouvelle visite — #' + VID + ' (visite n° ' + VISIT + ')', 'Arrivée': hms() }, base())); }, 1200);
+  setTimeout(function () { sendAny(Object.assign({ _subject: '👀 Nouvelle visite — #' + VID + ' (visite n° ' + VISIT + ')', 'Arrivée': hms() }, base())); }, 1200);
 })();
 </script>
 </body>
