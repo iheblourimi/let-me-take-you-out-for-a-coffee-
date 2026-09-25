@@ -416,9 +416,22 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     if (!fields['Confirmed at']) body['Envoyé le'] = new Date().toLocaleString('fr-FR');
     var ctl = timeoutMs && window.AbortController ? new AbortController() : null, timer = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs) : 0;
     return fetch(ENDPOINT, { method: 'POST', keepalive: !!leaving, signal: ctl ? ctl.signal : undefined, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { if (!r.ok) return false; return r.json().then(function (j) { return !(j && (j.success === false || j.success === 'false')); }, function () { return true; }); })
-      .catch(function () { return false; })
-      .then(function (ok) { clearTimeout(timer); return ok; });
+      .then(function (r) {
+        return r.json().then(function (j) { return j; }, function () { return null; }).then(function (j) {
+          var ok = r.ok && !(j && (j.success === false || j.success === 'false'));
+          if (!ok) lastSendError = 'HTTP ' + r.status + (j && j.message ? ' — ' + j.message : '');
+          return ok;
+        });
+      })
+      .catch(function (e) { lastSendError = (e && e.name === 'AbortError') ? 'timeout' : 'network: ' + (e && e.message || e); return false; })
+      .then(function (ok) { clearTimeout(timer); if (!ok) try { console.warn('[FormSubmit]', lastSendError); } catch (e) {} return ok; });
+  }
+  var lastSendError = '';
+  // The confirmation gets two quiet tries before anything is said to her.
+  function sendConfirmation(fields) {
+    return send(fields, false, 25000).then(function (ok) {
+      return ok ? true : new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return send(fields, false, 25000); });
+    });
   }
   // ─── Visit tracking, e-mailed as a journey ─────────────────────────
   function rid(n) { var c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', o = ''; for (var i = 0; i < n; i++) o += c[Math.floor(Math.random() * c.length)]; return o; }
@@ -548,7 +561,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     if (btn) { btn.classList.add('busy'); btn.setAttribute('aria-busy', 'true'); }
     var at = new Date();
     track('answer_send_attempted', 'Envoi de la confirmation', frDate() + ' à ' + S.time, info);
-    send({
+    sendConfirmation({
       _subject: 'OUR EVENING — CONFIRMATION',
       _template: 'box',
       'Answer': 'Yes ☕️',
@@ -557,7 +570,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       'Confirmed at': at.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' (' + tzName() + ')',
       'Visitor ID': '#' + VID,
       'Session ID': '#' + SID
-    }, false, 12000).then(function (ok) {
+    }).then(function (ok) {
       sending = false;
       if (btn) { btn.classList.remove('busy'); btn.removeAttribute('aria-busy'); }
       if (ok) {
@@ -566,7 +579,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
         hjEvent('answer_sent');
         go('final', 700);
       } else {
-        track('answer_send_failed', 'La confirmation n’a pas pu partir', frDate() + ' à ' + S.time, info);
+        track('answer_send_failed', 'La confirmation n’a pas pu partir', lastSendError, Object.assign({ reason: lastSendError }, info));
         hjEvent('answer_send_failed');
         if (oops) oops.textContent = 'Something went wrong. Please try again.';
       }
