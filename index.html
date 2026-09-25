@@ -427,9 +427,30 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   }
   var lastSendError = '';
   // The confirmation gets two quiet tries before anything is said to her.
+  // Two independent routes to the same inbox:
+  //  1. FormSubmit's AJAX endpoint (the usual one);
+  //  2. if that answers badly or not at all, a classic hidden form post to FormSubmit —
+  //     the plain HTML-form route, which doesn't depend on the AJAX/JSON answer.
+  // The AJAX error, if any, is written into the e-mail so the reason can be read there.
+  function sendViaForm(fields, timeoutMs) {
+    return new Promise(function (resolve) {
+      var name = 'fs' + Date.now(), done = false;
+      var ifr = document.createElement('iframe'); ifr.name = name; ifr.title = ''; ifr.setAttribute('aria-hidden', 'true'); ifr.tabIndex = -1;
+      ifr.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+      var f = document.createElement('form'); f.method = 'POST'; f.action = 'https://formsubmit.co/' + EMAIL; f.target = name; f.acceptCharset = 'UTF-8'; f.style.display = 'none';
+      var all = Object.assign({ _template: 'table', _captcha: 'false', 'Envoyé le': new Date().toLocaleString('fr-FR') }, fields);
+      Object.keys(all).forEach(function (k) { var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = String(all[k]); f.appendChild(i); });
+      function end(ok) { if (done) return; done = true; clearTimeout(t); setTimeout(function () { ifr.remove(); f.remove(); }, 4000); resolve(ok); }
+      var t = setTimeout(function () { lastSendError += ' · form: timeout'; end(false); }, timeoutMs);
+      document.body.appendChild(ifr); document.body.appendChild(f);
+      setTimeout(function () { ifr.addEventListener('load', function () { end(true); }); try { f.submit(); } catch (e) { lastSendError += ' · form: ' + e.message; end(false); } }, 30);
+    });
+  }
   function sendConfirmation(fields) {
-    return send(fields, false, 25000).then(function (ok) {
-      return ok ? true : new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return send(fields, false, 25000); });
+    return send(fields, false, 15000).then(function (ok) {
+      if (ok) return true;
+      var why = lastSendError;
+      return sendViaForm(Object.assign({}, fields, { 'Note technique': 'envoyé par le formulaire de secours (AJAX : ' + why + ')' }), 20000);
     });
   }
   // ─── Visit tracking, e-mailed as a journey ─────────────────────────
