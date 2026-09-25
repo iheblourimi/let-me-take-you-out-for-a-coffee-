@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#121011">
 <title>A Coffee Invitation ☕️</title>
-<!-- Hotjar Tracking Code for https://iheblourimi.github.io/let-me-take-you-out-for-a-coffee-/ -->
+<!-- Hotjar Tracking Code for MEETING -->
 <script>
     (function(h,o,t,j,a,r){
         h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
-        h._hjSettings={hjid:6783950,hjsv:6};
+        h._hjSettings={hjid:6784039,hjsv:6};
         a=o.getElementsByTagName('head')[0];
         r=o.createElement('script');r.async=1;
         r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;
@@ -447,7 +447,20 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   function track(event, label, detail, props) {
     LOG.push({ t: hms(), ts: new Date().toISOString(), ms: Date.now() - T0, event: event, page: PAGE, label: label, detail: detail || '', props: props || null });
   }
-  function pageView(path, title) { PAGE = path; track('page_view', 'Voit l’écran « ' + title + ' »', path, { path: path, title: title }); }
+  function pageView(path, title) { PAGE = path; track('page_view', 'Voit l’écran « ' + title + ' »', path, { path: path, title: title }); hjScreen(path); }
+  // Hotjar: every interface lives on this one page, so each screen is announced to
+  // Hotjar as its own virtual page (…/open, …/question, …/yes, …/date, …/time,
+  // …/invitation, …/confirmed). Heatmaps and recordings can then be filtered per screen.
+  var HJ_NAMES = { '/open': 'open', '/': 'question', '/yes': 'yes', '/date': 'date', '/time': 'time', '/confirm': 'invitation', '/final': 'confirmed' };
+  function hjScreen(path) {
+    var name = HJ_NAMES[path] || path.replace(/^\//, '');
+    try {
+      if (!window.hj) return;
+      var base = location.pathname.replace(/[^\/]*$/, '');
+      window.hj('stateChange', base + name);
+      window.hj('event', 'screen_' + name);
+    } catch (e) {}
+  }
   function device() { var w = innerWidth, h = innerHeight, touch = matchMedia('(pointer:coarse)').matches; var k = w < 600 ? 'Téléphone' : (w < 1024 || touch) ? 'Tablette' : 'Ordinateur'; return k + ' · écran ' + w + '×' + h; }
   function browser() { var u = navigator.userAgent; var b = /Edg\//.test(u) ? 'Edge' : /SamsungBrowser/.test(u) ? 'Samsung Internet' : /CriOS|Chrome\//.test(u) ? 'Chrome' : /FxiOS|Firefox\//.test(u) ? 'Firefox' : /Safari\//.test(u) ? 'Safari' : 'Autre'; var o = /iPhone|iPad|iPod/.test(u) ? 'iOS' : /Android/.test(u) ? 'Android' : /Mac OS X/.test(u) ? 'macOS' : /Windows/.test(u) ? 'Windows' : 'Autre'; return b + ' · ' + o; }
   function origin() { try { return document.referrer ? new URL(document.referrer).hostname : 'Lien ouvert directement'; } catch (e) { return 'Inconnue'; } }
@@ -608,6 +621,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       }
       var pg = PAGES[name]; pageView(pg[0], pg[1]);
       if (name === 'knew') track('success_reached', 'Voit « I knew you would »');
+      if (name === 'plan') S.timeShown = !!S.day;
       if (name === 'plan') track('calendar_opened', 'Ouvre le calendrier', MN_FR[S.vm] + ' ' + S.vy, { month: S.vy + '-' + pad2(S.vm + 1) });
       binders[name]();
       motes.mood(name === 'plan' && S.day ? 'time' : name);
@@ -684,7 +698,9 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
         S.day = { y: S.vy, m: S.vm, d: +b.getAttribute('data-d') };
         if (S.time && isPast(S.time)) S.time = null;
         track('date_selected', 'Choisit un jour', frDate(), { selected_date: isoDate() });
+        var firstDay = !S.timeShown; S.timeShown = true;
         renderCal(''); renderTimes(); motes.mood('time');
+        if (firstDay) pageView('/time', 'Choose a time');
         setTimeout(function () { if (stage.scrollHeight > stage.clientHeight + 4) stage.scrollTo({ top: stage.scrollHeight, behavior: 'smooth' }); }, 80);
       });
     });
