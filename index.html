@@ -412,8 +412,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
 
   // ─── Email ──────────────────────────────────────────────────────────
   function send(fields, leaving, timeoutMs) {
-    var body = Object.assign({ _template: 'table', _captcha: 'false' }, fields);
-    if (!fields['Confirmed at']) body['Envoyé le'] = new Date().toLocaleString('fr-FR');
+    var body = Object.assign({ _template: 'table', _captcha: 'false', 'Envoyé le': new Date().toLocaleString('fr-FR') }, fields);
     var ctl = timeoutMs && window.AbortController ? new AbortController() : null, timer = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs) : 0;
     return fetch(ENDPOINT, { method: 'POST', keepalive: !!leaving, signal: ctl ? ctl.signal : undefined, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(body) })
       .then(function (r) {
@@ -467,12 +466,19 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   function dur() { var x = Math.round((Date.now() - T0) / 1000); return Math.floor(x / 60) + ' min ' + (x % 60) + ' s'; }
   function state() { return S.confirmed ? '✅ Rendez-vous confirmé' : (S.day && S.time) ? 'Jour et heure choisis, pas encore confirmé' : S.saidYes ? 'A dit OUI, pas allée jusqu’au bout' : 'N’a pas encore dit oui'; }
   function base() { return { 'Visiteur': '#' + VID + ' (visite n° ' + VISIT + ')', 'Session': '#' + SID, 'Appareil': device(), 'Navigateur': browser(), 'Langue': navigator.language || '', 'Provenance': origin() }; }
-  function journey() { var f = {}; LOG.forEach(function (e, i) { f[(i < 9 ? '0' : '') + (i + 1) + ' · ' + e.t] = e.label + (e.detail ? ' — ' + e.detail : '') + '  [' + e.event + ']'; }); return f; }
+  // The e-mailed journey reads like a story: one numbered line per real action.
+  // Technical events (screen views, send attempts, button movements) stay out of it.
+  var QUIET = { page_view: 1, success_reached: 1, calendar_opened: 1, no_button_moved: 1, answer_send_attempted: 1, answer_sent: 1, answer_send_failed: 1 };
+  function journey() {
+    var f = {}, n = 0;
+    LOG.forEach(function (e) { if (QUIET[e.event]) return; n++; f[(n < 10 ? '0' : '') + n + ' · ' + e.t] = e.label + (e.detail ? ' — ' + e.detail : ''); });
+    return f;
+  }
   function events() { return JSON.stringify(LOG.map(function (e) { var o = { event: e.event, ts: e.ts, t: e.t, ms: e.ms, page: e.page, visitor_id: VID, session_id: SID }; if (e.props) o.props = e.props; return o; })); }
   function report(final) {
     if (LOG.length <= sentUpTo) return;
     sentUpTo = LOG.length;
-    var body = Object.assign({ _subject: '📋 Visite #' + VID + ' (n° ' + VISIT + ') — ' + state(), 'Résultat': state(), 'Durée': dur(), 'Clics sur NON': String(S.attempts) }, S.day && S.time ? { 'Rendez-vous choisi': frDate() + ' à ' + S.time } : {}, base(), journey(), { 'Événements (JSON)': events() });
+    var body = Object.assign({ _subject: '📋 Visite #' + VID + ' (n° ' + VISIT + ') — ' + state(), 'Résultat': state(), 'Durée': dur(), 'Clics sur NON': String(S.attempts) }, S.day && S.time ? { 'Rendez-vous choisi': frDate() + ' à ' + S.time } : {}, base(), journey());
     send(body, final);
   }
   function leave() { track('session_ended', 'Quitte la page', 'après ' + dur(), { duration_s: Math.round((Date.now() - T0) / 1000) }); report(true); }
@@ -527,7 +533,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
 
   var binders = {
     ask: function () {
-      S.attempts = 0; S.dx = 0; S.dy = 0;
+      S.attempts = 0; S.dx = 0; S.dy = 0; S.answering = false;
       var no = $('.no');
       $('.yes').addEventListener('click', function () { answeredYes(); });
       no.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse' && S.attempts < GIVE) dodge(e); });
@@ -572,22 +578,20 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     sending = true;
     if (oops) oops.textContent = '';
     if (btn) { btn.classList.add('busy'); btn.setAttribute('aria-busy', 'true'); }
-    var at = new Date();
     track('answer_send_attempted', 'Envoi de la confirmation', frDate() + ' à ' + S.time, info);
-    sendConfirmation({
-      _subject: 'OUR EVENING — CONFIRMATION',
-      _template: 'box',
-      'Answer': 'Yes ☕️',
-      'Date': enDate(),
-      'Time': S.time,
-      'Confirmed at': at.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' (' + tzName() + ')',
-      'Visitor ID': '#' + VID,
-      'Session ID': '#' + SID
-    }).then(function (ok) {
+    // Same e-mail as before: the answer, the evening, the visitor and her whole journey.
+    sendConfirmation(Object.assign({
+      _subject: '✅ Rendez-vous confirmé : ' + frDate() + ' à ' + S.time,
+      'Réponse': 'OUI — confirmé',
+      'Jour': frDate(),
+      'Heure': S.time,
+      'Clics sur NON': String(S.attempts),
+      'Durée jusqu’ici': dur()
+    }, base(), journey())).then(function (ok) {
       sending = false;
       if (btn) { btn.classList.remove('busy'); btn.removeAttribute('aria-busy'); }
       if (ok) {
-        store(SENT_KEY, key);
+        store(SENT_KEY, key); sentUpTo = LOG.length;
         track('answer_sent', 'Confirmation envoyée', frDate() + ' à ' + S.time, info);
         hjEvent('answer_sent');
         go('final', 700);
@@ -601,6 +605,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   function enDate() { var d = new Date(S.day.y, S.day.m, S.day.d); return WD[d.getDay()] + ', ' + MN[S.day.m] + ' ' + S.day.d + ', ' + S.day.y; }
   function tzName() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } }
   function answeredYes(viaNo) {
+    if (S.answering) return; S.answering = true;
     go('knew', 750);
     S.saidYes = true;
     track('yes_clicked', 'Clic sur OUI', viaNo ? 'via le bouton NON devenu « Fine — yes »' : S.attempts ? 'après ' + S.attempts + ' tentative' + (S.attempts > 1 ? 's' : '') + ' sur NON' : 'du premier coup', { no_attempts: S.attempts, via_no: !!viaNo });
@@ -634,7 +639,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     var now = Date.now(); if (now - S.last < 320) return; S.last = now;
     if (S.attempts >= GIVE) return;
     var a = ++S.attempts;
-    track('no_clicked', 'Clic sur NON', 'tentative ' + a + (a >= GIVE ? ' — le bouton NON abandonne et devient « Fine — yes »' : ''), { attempt: a });
+    track('no_clicked', 'Clic sur NON', 'tentative ' + a + (a >= GIVE ? ' — le bouton NON abandonne et devient « Fine — yes »' : ' — le bouton s’est déplacé'), { attempt: a });
     var no = $('.no'), zone = $('.zone'), yw = $('.yes-wrap'), sub = $('.sub');
     sub.textContent = SUBS[a]; sub.className = 'sub s' + (a % 2);
     yw.style.transform = 'scale(' + (1 + a * 0.014).toFixed(3) + ')';
@@ -888,7 +893,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   var opened = false;
   function openGate() {
     if (opened) return; opened = true;
-    track('open_clicked', 'Clic sur « Open »');
+    track('open_clicked', 'Ouvre l’invitation', 'clic sur « Open »');
     musicPlay('start');
     motes.into(document.querySelector('.atmo')); motes.mood('ask');
     gate.classList.add('out');
