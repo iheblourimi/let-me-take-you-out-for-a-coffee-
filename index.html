@@ -326,8 +326,13 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
 @media (prefers-reduced-motion:reduce){.ly *,.ly *::before,.ly *::after{animation:none!important;transition-duration:.01ms!important}}
 
 .fx{position:absolute;inset:0}
-.sent{margin-top:3cqh!important;min-height:1.4em;font-size:11px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:var(--ink2);animation:scrIn 1s 2.6s ease both}
-.sent a{color:var(--champ);text-underline-offset:5px}
+/* confirmation being sent quietly: the button breathes; a discreet line if it fails */
+.yes.busy{pointer-events:none;animation:busy 1.6s ease-in-out infinite}
+@keyframes busy{0%,100%{opacity:1}50%{opacity:.62}}
+.acts .oops{margin:2px 0 0;min-height:1.3em;font-family:'Cormorant Garamond',Garamond,serif;font-style:italic;font-size:18px;color:var(--ink2);text-align:center}
+.acts .oops:not(:empty){animation:subA .7s ease both}
+.acts .oops:empty{display:none}
+.acts{flex-wrap:wrap;justify-content:center}.acts .oops{flex-basis:100%}
 
 .snd{position:absolute;z-index:3;top:calc(var(--fi) + 12px);right:calc(var(--fi) + 12px);appearance:none;border:0;cursor:pointer;display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px 0 11px;border-radius:999px;background:rgba(18,16,17,.55);box-shadow:inset 0 0 0 1px var(--champ-line);color:var(--champ);font-family:'Jost',system-ui,sans-serif;font-size:10px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:box-shadow .3s ease,color .3s ease;animation:scrIn 1.2s 1.4s ease both}
 .snd::before{content:'';position:absolute;inset:-6px}
@@ -406,10 +411,14 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   var sm0 = startMonth(); S.vy = sm0.y; S.vm = sm0.m;
 
   // ─── Email ──────────────────────────────────────────────────────────
-  function send(fields, leaving) {
-    var body = Object.assign({ _template: 'table', _captcha: 'false', 'Envoyé le': new Date().toLocaleString('fr-FR') }, fields);
-    return fetch(ENDPOINT, { method: 'POST', keepalive: !!leaving, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.ok; }).catch(function () { return false; });
+  function send(fields, leaving, timeoutMs) {
+    var body = Object.assign({ _template: 'table', _captcha: 'false' }, fields);
+    if (!fields['Confirmed at']) body['Envoyé le'] = new Date().toLocaleString('fr-FR');
+    var ctl = timeoutMs && window.AbortController ? new AbortController() : null, timer = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs) : 0;
+    return fetch(ENDPOINT, { method: 'POST', keepalive: !!leaving, signal: ctl ? ctl.signal : undefined, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { if (!r.ok) return false; return r.json().then(function (j) { return !(j && (j.success === false || j.success === 'false')); }, function () { return true; }); })
+      .catch(function () { return false; })
+      .then(function (ok) { clearTimeout(timer); return ok; });
   }
   // ─── Visit tracking, e-mailed as a journey ─────────────────────────
   function rid(n) { var c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', o = ''; for (var i = 0; i < n; i++) o += c[Math.floor(Math.random() * c.length)]; return o; }
@@ -423,7 +432,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   // optional properties. Decorative animations (particles, blooms) are never tracked.
   var PAGE = '/';
   function track(event, label, detail, props) {
-    LOG.push({ t: hms(), ms: Date.now() - T0, event: event, page: PAGE, label: label, detail: detail || '', props: props || null });
+    LOG.push({ t: hms(), ts: new Date().toISOString(), ms: Date.now() - T0, event: event, page: PAGE, label: label, detail: detail || '', props: props || null });
   }
   function pageView(path, title) { PAGE = path; track('page_view', 'Voit l’écran « ' + title + ' »', path, { path: path, title: title }); }
   function device() { var w = innerWidth, h = innerHeight, touch = matchMedia('(pointer:coarse)').matches; var k = w < 600 ? 'Téléphone' : (w < 1024 || touch) ? 'Tablette' : 'Ordinateur'; return k + ' · écran ' + w + '×' + h; }
@@ -433,7 +442,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   function state() { return S.confirmed ? '✅ Rendez-vous confirmé' : (S.day && S.time) ? 'Jour et heure choisis, pas encore confirmé' : S.saidYes ? 'A dit OUI, pas allée jusqu’au bout' : 'N’a pas encore dit oui'; }
   function base() { return { 'Visiteur': '#' + VID + ' (visite n° ' + VISIT + ')', 'Session': '#' + SID, 'Appareil': device(), 'Navigateur': browser(), 'Langue': navigator.language || '', 'Provenance': origin() }; }
   function journey() { var f = {}; LOG.forEach(function (e, i) { f[(i < 9 ? '0' : '') + (i + 1) + ' · ' + e.t] = e.label + (e.detail ? ' — ' + e.detail : '') + '  [' + e.event + ']'; }); return f; }
-  function events() { return JSON.stringify(LOG.map(function (e) { var o = { event: e.event, t: e.t, ms: e.ms, page: e.page }; if (e.props) o.props = e.props; return o; })); }
+  function events() { return JSON.stringify(LOG.map(function (e) { var o = { event: e.event, ts: e.ts, t: e.t, ms: e.ms, page: e.page, visitor_id: VID, session_id: SID }; if (e.props) o.props = e.props; return o; })); }
   function report(final) {
     if (LOG.length <= sentUpTo) return;
     sentUpTo = LOG.length;
@@ -480,13 +489,13 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
         '<p class="inv-d"><span><em>' + WD[d.getDay()] + ',</em></span> <span>' + MN[S.day.m] + ' ' + S.day.d + '</span></p>' +
         '<p class="inv-time">' + S.time + '</p><p class="inv-line">A good beginning deserves a beautiful evening.</p></div></article>' +
         '<div class="acts"><button class="btn yes" type="button" data-act="official"><span class="lbl">Make It Official</span></button>' +
-        '<button class="btn link" type="button" data-act="change"><span class="lbl">Change my choice</span></button></div></section>';
+        '<button class="btn link" type="button" data-act="change"><span class="lbl">Change my choice</span></button><p class="oops" role="status" aria-live="polite"></p></div></section>';
     },
     final: function () {
       var d = new Date(S.day.y, S.day.m, S.day.d);
       return '<section class="scr final" role="status"><h2 class="fin-t">It’s a <em>meeting</em>.</h2>' + ORN +
         '<p class="fin-d">' + WD[d.getDay()] + ', ' + MN[S.day.m] + ' ' + S.day.d + '</p><p class="fin-time">' + S.time + '</p>' +
-        '<p class="fin-thx">Thank you for accepting my invitation.</p><p class="fin-msg">It will be my pleasure to share a coffee with you and to have the privilege of seeing your <em>beautiful smile</em>. ☕️✨</p><p class="fin-s">I’ll see you there.</p><p class="sent" aria-live="polite"></p></section>';
+        '<p class="fin-thx">Thank you for accepting my invitation.</p><p class="fin-msg">It will be my pleasure to share a coffee with you and to have the privilege of seeing your <em>beautiful smile</em>. ☕️✨</p><p class="fin-s">I’ll see you there.</p></section>';
     }
   };
 
@@ -510,23 +519,61 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     },
     card: function () {
       track('invitation_viewed', 'Voit la carte d’invitation', frDate() + ' à ' + S.time, { date: isoDate(), time: S.time });
-      $('[data-act="official"]').addEventListener('click', function () {
-        go('final', 700);
-        S.confirmed = true; track('invitation_confirmed', 'Clic sur « Make It Official »', 'rendez-vous confirmé : ' + frDate() + ' à ' + S.time, { date: isoDate(), time: S.time });
-        sentUpTo = LOG.length;
-        send(Object.assign({ _subject: '✅ Rendez-vous confirmé : ' + frDate() + ' à ' + S.time, 'Réponse': 'OUI — confirmé', 'Jour': frDate(), 'Heure': S.time, 'Clics sur NON': String(S.attempts), 'Durée jusqu’ici': dur() }, base(), journey()))
-          .then(function (ok) { S.sendOk = ok; showSent(); });
-      });
+      $('[data-act="official"]').addEventListener('click', confirmInvitation);
       $('[data-act="change"]').addEventListener('click', function () { track('choice_changed', 'Clic sur « Change my choice »', 'retourne au calendrier'); go('plan'); });
     },
-    final: function () { showSent(); }
+    final: function () {}
   };
 
-  function showSent() {
-    var el = $('.sent'); if (!el || S.sendOk == null) return;
-    if (S.sendOk) el.textContent = 'Your answer has been sent.';
-    else el.innerHTML = '<a href="mailto:' + EMAIL + '?subject=' + encodeURIComponent('Our evening — ' + frDate() + ' ' + S.time) + '&body=' + encodeURIComponent('Oui ☕️ — ' + frDate() + ' à ' + S.time) + '">Send him my answer</a>';
+  // ─── The confirmation: sent quietly, once, the moment she makes it official ──
+  // No extra click. The e-mail goes out through the same FormSubmit endpoint the
+  // site already uses (no password or secret key lives in this page). A key in the
+  // browser remembers which date + time was already sent, so a double tap, a
+  // reload or going back and confirming the same evening again never sends twice.
+  var SENT_KEY = 'confirmation_email_sent', sending = false;
+  function hjEvent(name) { try { if (window.hj) window.hj('event', name); } catch (e) {} }
+  function confirmInvitation() {
+    if (sending || !S.day || !S.time) return;
+    var btn = $('[data-act="official"]'), oops = $('.oops');
+    var key = VID + '|' + isoDate() + '|' + S.time;
+    var info = { visitor_id: VID, session_id: SID, selected_date: isoDate(), selected_time: S.time, device: device(), screen: innerWidth + '×' + innerHeight };
+    if (!S.confirmed || S.confirmedKey !== key) {
+      S.confirmed = true; S.confirmedKey = key;
+      track('invitation_confirmed', 'Clic sur « Make It Official »', 'rendez-vous confirmé : ' + frDate() + ' à ' + S.time, info);
+      hjEvent('invitation_confirmed');
+    }
+    if (store(SENT_KEY) === key) { go('final', 700); return; }
+    sending = true;
+    if (oops) oops.textContent = '';
+    if (btn) { btn.classList.add('busy'); btn.setAttribute('aria-busy', 'true'); }
+    var at = new Date();
+    track('answer_send_attempted', 'Envoi de la confirmation', frDate() + ' à ' + S.time, info);
+    send({
+      _subject: 'OUR EVENING — CONFIRMATION',
+      _template: 'box',
+      'Answer': 'Yes ☕️',
+      'Date': enDate(),
+      'Time': S.time,
+      'Confirmed at': at.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' (' + tzName() + ')',
+      'Visitor ID': '#' + VID,
+      'Session ID': '#' + SID
+    }, false, 12000).then(function (ok) {
+      sending = false;
+      if (btn) { btn.classList.remove('busy'); btn.removeAttribute('aria-busy'); }
+      if (ok) {
+        store(SENT_KEY, key);
+        track('answer_sent', 'Confirmation envoyée', frDate() + ' à ' + S.time, info);
+        hjEvent('answer_sent');
+        go('final', 700);
+      } else {
+        track('answer_send_failed', 'La confirmation n’a pas pu partir', frDate() + ' à ' + S.time, info);
+        hjEvent('answer_send_failed');
+        if (oops) oops.textContent = 'Something went wrong. Please try again.';
+      }
+    });
   }
+  function enDate() { var d = new Date(S.day.y, S.day.m, S.day.d); return WD[d.getDay()] + ', ' + MN[S.day.m] + ' ' + S.day.d + ', ' + S.day.y; }
+  function tzName() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } }
   function answeredYes(viaNo) {
     go('knew', 750);
     S.saidYes = true;
@@ -695,29 +742,32 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') { if (musicOn) audio.pause(); } else if (musicOn) audio.play().catch(function () {}); });
 
   // ─── Candlelight particles ─────────────────────────────────────────
-  // Tiny champagne points and soft bubbles drifting upward, drawn on one canvas
-  // that always sits behind the content. Density follows the current screen.
+  // Tiny champagne and ivory points, a few soft bubbles, the odd hint of burgundy,
+  // drifting slowly upward on one canvas that always sits behind the content and
+  // never receives a tap. Each screen has its own quiet mood.
   var motes = (function () {
     var cv = document.querySelector('.pc'), atmo = cv.parentNode;
     var ctx = cv.getContext && cv.getContext('2d');
     var reduce = matchMedia('(prefers-reduced-motion: reduce)');
-    // count per 1000px of width · rise speed · share of bubbles · glow
+    // n: points per 1000px of width · rise: speed · bub: share of bubbles
+    // glow: halo size · wine: share of burgundy points · halo: points circling the invitation card
     var MOODS = {
-      gate:  { n: 7,  rise: 0.55, bub: 0.15, glow: 0.8 },
-      ask:   { n: 11, rise: 0.6,  bub: 0.2,  glow: 0.9 },
-      knew:  { n: 20, rise: 1.25, bub: 0.3,  glow: 1.1 },
-      plan:  { n: 6,  rise: 0.5,  bub: 0.1,  glow: 0.7 },
-      time:  { n: 4,  rise: 0.45, bub: 0.1,  glow: 0.6 },
-      card:  { n: 13, rise: 0.7,  bub: 0.25, glow: 1 },
-      final: { n: 24, rise: 0.85, bub: 0.35, glow: 1.25 }
+      gate:  { n: 10, rise: 0.45,  bub: 0.12, glow: 0.8,  wine: 0,    halo: 0 },  // anticipation
+      ask:   { n: 16, rise: 0.6, bub: 0.18, glow: 0.9,  wine: 0.05, halo: 0 },  // intimacy, curiosity
+      knew:  { n: 28, rise: 1.2, bub: 0.28, glow: 1.05, wine: 0.12, halo: 0 },  // warmth, happiness
+      plan:  { n: 9,  rise: 0.5, bub: 0.1,  glow: 0.7,  wine: 0,    halo: 0 },  // calm — the calendar leads
+      time:  { n: 7,  rise: 0.45,  bub: 0.08, glow: 0.6,  wine: 0,    halo: 0 },  // elegant anticipation
+      card:  { n: 20, rise: 0.65,  bub: 0.25, glow: 1.15, wine: 0.14, halo: 10 },  // the invitation
+      final: { n: 32, rise: 0.8, bub: 0.3,  glow: 1.2,  wine: 0.15, halo: 0 }   // romantic evening
     };
-    var M = MOODS.gate, P = [], W = 0, H = 0, dpr = 1, raf = 0, lastT = 0, small = false, sprite = null, rgb = '214,193,156';
-    if (!ctx) return { mood: function () {}, into: function () {} };
-    function makeSprite() {
-      var c = document.createElement('canvas'), s = 64; c.width = c.height = s;
-      var g = c.getContext('2d'), gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    var TONES = { champ: '214,193,156', ivory: '242,235,221', wine: '163,53,74' };
+    var M = MOODS.gate, P = [], W = 0, H = 0, dpr = 1, raf = 0, lastT = 0, small = false, sprites = {}, card = null;
+    if (!ctx) return { mood: function () {}, into: function () {}, start: function () {} };
+    function makeSprite(rgb) {
+      var c = document.createElement('canvas'), z = 64; c.width = c.height = z;
+      var g = c.getContext('2d'), gr = g.createRadialGradient(z / 2, z / 2, 0, z / 2, z / 2, z / 2);
       gr.addColorStop(0, 'rgba(' + rgb + ',1)'); gr.addColorStop(0.18, 'rgba(' + rgb + ',.55)'); gr.addColorStop(0.45, 'rgba(' + rgb + ',.12)'); gr.addColorStop(1, 'rgba(' + rgb + ',0)');
-      g.fillStyle = gr; g.fillRect(0, 0, s, s); sprite = c;
+      g.fillStyle = gr; g.fillRect(0, 0, z, z); return c;
     }
     function size() {
       var r = cv.getBoundingClientRect(); W = r.width; H = r.height; small = W < 600;
@@ -725,52 +775,80 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    function target() { var n = M.n * Math.max(W, 320) / 1000 + M.n * 0.35; if (small) n *= 0.6; return Math.max(2, Math.round(Math.min(n, small ? 16 : 44))); }
-    function spawn(anywhere) {
-      var bub = Math.random() < M.bub;
+    function target() { var n = M.n * Math.max(W, 320) / 1000 + M.n * 0.35; if (small) n *= 0.7; return Math.max(3, Math.round(Math.min(n, small ? 22 : 60))); }
+    function haloWant() { return small ? Math.ceil(M.halo * 0.6) : M.halo; }
+    function tone() { var q = Math.random(); return q < M.wine ? 'wine' : q < M.wine + 0.3 ? 'ivory' : 'champ'; }
+    function spawn(anywhere, halo) {
+      var bub = !halo && Math.random() < M.bub, k = small ? 0.8 : 1, tn = bub ? 'champ' : tone();
       return {
         x: Math.random() * W, y: anywhere ? Math.random() * H : H + 10 + Math.random() * 40,
-        r: bub ? 2.2 + Math.random() * 2.6 : 0.5 + Math.random() * 1.3,
-        bub: bub, glow: !bub && Math.random() < 0.35,
-        vy: (0.004 + Math.random() * 0.01) * (small ? 0.85 : 1), sway: 6 + Math.random() * 14, ph: Math.random() * 6.28, fs: 0.00025 + Math.random() * 0.0004,
-        a: 0.16 + Math.random() * 0.34, tw: 0.0006 + Math.random() * 0.0012, life: 0, fade: 0
+        r: (bub ? 2.6 + Math.random() * 3 : 0.8 + Math.random() * 1.6) * k,
+        bub: bub, tone: tn, glow: !bub && tn !== 'wine' && Math.random() < 0.5,
+        vy: 0.004 + Math.random() * 0.009, sway: (6 + Math.random() * 14) * k, ph: Math.random() * 6.28, fs: 0.00022 + Math.random() * 0.00035,
+        a: (tn === 'wine' ? 0.45 : 0.4) + Math.random() * 0.45, tw: 0.0005 + Math.random() * 0.0011, life: 0, fade: 0,
+        halo: !!halo, ang: Math.random() * 6.2832, av: (Math.random() < 0.5 ? -1 : 1) * (0.000035 + Math.random() * 0.00004), gap: 18 + Math.random() * 40, wob: Math.random() * 6.28
       };
+    }
+    // where the invitation card sits, measured against the canvas
+    function measureCard() {
+      card = null; if (!M.halo) return;
+      var el = document.querySelector('.inv'); if (!el) return;
+      var a = el.getBoundingClientRect(), b = cv.getBoundingClientRect();
+      if (a.width) card = { cx: a.left - b.left + a.width / 2, cy: a.top - b.top + a.height / 2, rx: a.width / 2, ry: a.height / 2 };
+    }
+    function pos(p, t) {
+      if (p.halo && card) {
+        // a slow ellipse just outside the card's edge, never over its text
+        var g = p.gap + Math.sin(t * 0.0003 + p.wob) * 6;
+        p.lx = card.cx + Math.cos(p.ang) * (card.rx + g); p.ly = card.cy + Math.sin(p.ang) * (card.ry + g);
+        return [p.lx, p.ly];
+      }
+      if (p.halo) return [p.lx == null ? -99 : p.lx, p.ly == null ? -99 : p.ly];
+      return [p.x + Math.sin(t * p.fs + p.ph) * p.sway, p.y];
     }
     function draw(t) {
       ctx.clearRect(0, 0, W, H);
       for (var i = 0; i < P.length; i++) {
-        var p = P[i], x = p.x + Math.sin(t * p.fs + p.ph) * p.sway;
-        var al = p.a * (0.7 + 0.3 * Math.sin(t * p.tw + p.ph)) * Math.min(1, p.life / 1600) * (1 - p.fade) * Math.min(1, p.y / (H * 0.18));
+        var p = P[i]; var xy = pos(p, t), x = xy[0], y = xy[1], rgb = TONES[p.tone];
+        var al = p.a * (0.7 + 0.3 * Math.sin(t * p.tw + p.ph)) * Math.min(1, p.life / 1800) * (1 - p.fade) * (p.halo ? 0.8 : Math.min(1, y / (H * 0.18)));
         if (al <= 0.003) continue;
-        if (p.bub) { ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, 6.2832); ctx.strokeStyle = 'rgba(' + rgb + ',' + (al * 0.55).toFixed(3) + ')'; ctx.lineWidth = 0.7; ctx.stroke(); }
-        else if (p.glow && !small) { var s = p.r * 9 * M.glow; ctx.globalAlpha = al * 0.55; ctx.drawImage(sprite, x - s / 2, p.y - s / 2, s, s); ctx.globalAlpha = 1; }
-        else { ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, 6.2832); ctx.fillStyle = 'rgba(' + rgb + ',' + al.toFixed(3) + ')'; ctx.fill(); }
+        if (p.bub) { ctx.beginPath(); ctx.arc(x, y, p.r, 0, 6.2832); ctx.strokeStyle = 'rgba(' + rgb + ',' + (al * 0.75).toFixed(3) + ')'; ctx.lineWidth = 0.9; ctx.stroke(); }
+        else if (p.glow) { var z = p.r * (small ? 7 : 10) * M.glow; ctx.globalAlpha = Math.min(1, al * 0.9); ctx.drawImage(sprites[p.tone], x - z / 2, y - z / 2, z, z); ctx.globalAlpha = 1; }
+        else { ctx.beginPath(); ctx.arc(x, y, p.r, 0, 6.2832); ctx.fillStyle = 'rgba(' + rgb + ',' + al.toFixed(3) + ')'; ctx.fill(); }
       }
     }
     function frame(t) {
       raf = 0;
       var dt = Math.min(64, lastT ? t - lastT : 16); lastT = t;
-      var want = target(), alive = 0;
+      if (M.halo) measureCard();
+      var want = target(), hWant = card ? haloWant() : 0, alive = 0, hAlive = 0;
       for (var i = P.length - 1; i >= 0; i--) {
-        var p = P[i]; p.life += dt; p.y -= p.vy * M.rise * dt * (p.bub ? 0.8 : 1);
-        if (p.fade > 0) p.fade = Math.min(1, p.fade + dt / 1400); else alive++;
-        if (p.y < -20 || p.fade >= 1) P.splice(i, 1);
+        var p = P[i]; p.life += dt;
+        if (p.halo) p.ang += p.av * dt; else p.y -= p.vy * M.rise * dt * (p.bub ? 0.8 : 1);
+        if (p.fade > 0) p.fade = Math.min(1, p.fade + dt / 1400); else if (p.halo) hAlive++; else alive++;
+        if ((!p.halo && p.y < -20) || p.fade >= 1) P.splice(i, 1);
       }
       // too many for this screen: let a few fade out gently; too few: bring some in
-      for (var k = 0; k < P.length && alive > want; k++) if (!P[k].fade) { P[k].fade = 0.001; alive--; }
-      if (alive < want && Math.random() < 0.08) P.push(spawn(false));
+      for (var k = 0; k < P.length; k++) {
+        var q = P[k]; if (q.fade) continue;
+        if (!q.halo && alive > want) { q.fade = 0.001; alive--; }
+        else if (q.halo && hAlive > hWant) { q.fade = 0.001; hAlive--; }
+      }
+      if (alive < want && Math.random() < 0.12) P.push(spawn(false));
+      if (hAlive < hWant && Math.random() < 0.03) P.push(spawn(true, true));
       draw(t);
       loop();
     }
     function loop() { if (!raf && !reduce.matches && document.visibilityState !== 'hidden') raf = requestAnimationFrame(frame); }
-    function still() { P = []; for (var i = 0, n = Math.round(target() * 0.6); i < n; i++) { var p = spawn(true); p.life = 2000; P.push(p); } draw(0); }
-    function start() { size(); makeSprite(); if (reduce.matches) { still(); return; } lastT = 0; loop(); }
+    // reduced motion: a few quiet, still points — no movement at all
+    function still() { P = []; for (var i = 0, n = Math.round(target() * 0.5); i < n; i++) { var p = spawn(true); p.life = 2000; P.push(p); } draw(0); }
+    function start() { size(); for (var t in TONES) sprites[t] = makeSprite(TONES[t]); if (reduce.matches) { still(); return; } lastT = 0; loop(); }
     function seed() { for (var i = P.length, n = target(); i < n; i++) { var p = spawn(true); p.life = Math.random() * 800; P.push(p); } }
     window.addEventListener('resize', function () { size(); if (reduce.matches) still(); });
     document.addEventListener('visibilitychange', function () { lastT = 0; loop(); });
     if (reduce.addEventListener) reduce.addEventListener('change', start);
     return {
-      mood: function (name) { M = MOODS[name] || MOODS.ask; if (reduce.matches) still(); else if (P.length < target() * 0.5) seed(); },
+      mood: function (name) { M = MOODS[name] || MOODS.ask; card = null; if (reduce.matches) still(); else if (P.length < target() * 0.5) seed(); },
       into: function (parent) { if (cv.parentNode !== parent) { parent === atmo ? atmo.insertBefore(cv, atmo.children[1] || null) : parent.appendChild(cv); size(); if (reduce.matches) still(); } },
       start: function () { start(); seed(); }
     };
