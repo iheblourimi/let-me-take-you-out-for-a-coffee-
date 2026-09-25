@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#121011">
 <title>A Coffee Invitation ☕️</title>
+<!-- Hotjar Tracking Code for https://iheblourimi.github.io/let-me-take-you-out-for-a-coffee-/ -->
+<script>
+    (function(h,o,t,j,a,r){
+        h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
+        h._hjSettings={hjid:6783950,hjsv:6};
+        a=o.getElementsByTagName('head')[0];
+        r=o.createElement('script');r.async=1;
+        r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;
+        a.appendChild(r);
+    })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&amp;family=Jost:wght@300;400;500&amp;family=Amiri:wght@400;700&amp;display=swap">
@@ -351,11 +362,15 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
 .gate-t{margin:0;font-family:'Cormorant Garamond',Garamond,serif;font-weight:400;font-size:min(9.6cqw,52px);line-height:1.05;color:var(--ink)}
 .gate-t em{font-style:italic;color:var(--champ)}
 .gate-s{margin:0;font-family:'Cormorant Garamond',Garamond,serif;font-style:italic;font-size:19px;color:var(--ink2)}
+
+/* candlelight particles — decorative, always behind the content, never clickable */
+.pc{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+.gate > .pc{position:absolute;z-index:0;animation:none}
 </style>
 </head>
 <body>
 <div class="ly" id="app">
-<div class="atmo" aria-hidden="true"><div class="light"></div><div class="fx"></div><div class="grain"></div><div class="frame"></div></div>
+<div class="atmo" aria-hidden="true"><div class="light"></div><canvas class="pc"></canvas><div class="fx"></div><div class="grain"></div><div class="frame"></div></div>
 <button class="snd" type="button" aria-pressed="false" aria-label="Play the music"><span class="bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="txt"></span></button>
 <main class="stage"></main>
 <div class="gate in"><p class="eyebrow">For you</p><p class="gate-t">A little <em>invitation</em>.</p><p class="gate-s">Turn the sound on — it comes with music.</p><button class="btn ghostb" type="button"><span class="lbl">Open</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15"/><path d="M14 7l5 5-5 5"/></svg></button></div>
@@ -403,24 +418,34 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   var VISIT = (+store('inv_visits') || 0) + 1; store('inv_visits', String(VISIT));
   var SID = rid(4), T0 = Date.now(), LOG = [], sentUpTo = 0;
   function hms() { return new Date().toLocaleTimeString('fr-FR', { hour12: false }); }
-  function track(label, detail) { LOG.push({ t: hms(), label: label, detail: detail || '' }); }
+  // Structured internal events: every entry has a stable event name (session_started,
+  // page_view, yes_clicked…), a readable French label for the e-mailed journey, and
+  // optional properties. Decorative animations (particles, blooms) are never tracked.
+  var PAGE = '/';
+  function track(event, label, detail, props) {
+    LOG.push({ t: hms(), ms: Date.now() - T0, event: event, page: PAGE, label: label, detail: detail || '', props: props || null });
+  }
+  function pageView(path, title) { PAGE = path; track('page_view', 'Voit l’écran « ' + title + ' »', path, { path: path, title: title }); }
   function device() { var w = innerWidth, h = innerHeight, touch = matchMedia('(pointer:coarse)').matches; var k = w < 600 ? 'Téléphone' : (w < 1024 || touch) ? 'Tablette' : 'Ordinateur'; return k + ' · écran ' + w + '×' + h; }
   function browser() { var u = navigator.userAgent; var b = /Edg\//.test(u) ? 'Edge' : /SamsungBrowser/.test(u) ? 'Samsung Internet' : /CriOS|Chrome\//.test(u) ? 'Chrome' : /FxiOS|Firefox\//.test(u) ? 'Firefox' : /Safari\//.test(u) ? 'Safari' : 'Autre'; var o = /iPhone|iPad|iPod/.test(u) ? 'iOS' : /Android/.test(u) ? 'Android' : /Mac OS X/.test(u) ? 'macOS' : /Windows/.test(u) ? 'Windows' : 'Autre'; return b + ' · ' + o; }
   function origin() { try { return document.referrer ? new URL(document.referrer).hostname : 'Lien ouvert directement'; } catch (e) { return 'Inconnue'; } }
   function dur() { var x = Math.round((Date.now() - T0) / 1000); return Math.floor(x / 60) + ' min ' + (x % 60) + ' s'; }
   function state() { return S.confirmed ? '✅ Rendez-vous confirmé' : (S.day && S.time) ? 'Jour et heure choisis, pas encore confirmé' : S.saidYes ? 'A dit OUI, pas allée jusqu’au bout' : 'N’a pas encore dit oui'; }
   function base() { return { 'Visiteur': '#' + VID + ' (visite n° ' + VISIT + ')', 'Session': '#' + SID, 'Appareil': device(), 'Navigateur': browser(), 'Langue': navigator.language || '', 'Provenance': origin() }; }
-  function journey() { var f = {}; LOG.forEach(function (e, i) { f[(i < 9 ? '0' : '') + (i + 1) + ' · ' + e.t] = e.label + (e.detail ? ' — ' + e.detail : ''); }); return f; }
+  function journey() { var f = {}; LOG.forEach(function (e, i) { f[(i < 9 ? '0' : '') + (i + 1) + ' · ' + e.t] = e.label + (e.detail ? ' — ' + e.detail : '') + '  [' + e.event + ']'; }); return f; }
+  function events() { return JSON.stringify(LOG.map(function (e) { var o = { event: e.event, t: e.t, ms: e.ms, page: e.page }; if (e.props) o.props = e.props; return o; })); }
   function report(final) {
     if (LOG.length <= sentUpTo) return;
     sentUpTo = LOG.length;
-    var body = Object.assign({ _subject: '📋 Visite #' + VID + ' (n° ' + VISIT + ') — ' + state(), 'Résultat': state(), 'Durée': dur(), 'Clics sur NON': String(S.attempts) }, S.day && S.time ? { 'Rendez-vous choisi': frDate() + ' à ' + S.time } : {}, base(), journey());
+    var body = Object.assign({ _subject: '📋 Visite #' + VID + ' (n° ' + VISIT + ') — ' + state(), 'Résultat': state(), 'Durée': dur(), 'Clics sur NON': String(S.attempts) }, S.day && S.time ? { 'Rendez-vous choisi': frDate() + ' à ' + S.time } : {}, base(), journey(), { 'Événements (JSON)': events() });
     send(body, final);
   }
-  function leave() { track('Quitte la page', 'après ' + dur()); report(true); }
-  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') leave(); else track('Revient sur la page'); });
+  function leave() { track('session_ended', 'Quitte la page', 'après ' + dur(), { duration_s: Math.round((Date.now() - T0) / 1000) }); report(true); }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') leave(); else track('session_resumed', 'Revient sur la page'); });
   window.addEventListener('pagehide', function () { if (LOG.length > sentUpTo) leave(); });
 
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function isoDate() { return S.day ? S.day.y + '-' + pad2(S.day.m + 1) + '-' + pad2(S.day.d) : ''; }
   function frDate() { var d = new Date(S.day.y, S.day.m, S.day.d); return WD_FR[d.getDay()] + ' ' + S.day.d + ' ' + MN_FR[S.day.m] + ' ' + S.day.y; }
 
   // ─── Screens ────────────────────────────────────────────────────────
@@ -433,7 +458,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
         '<p class="qe">Would you let me take you out for a <em>coffee</em>?</p>' +
         '<span class="rule" aria-hidden="true"></span><p class="sub s0" aria-live="polite">' + SUBS[0] + '</p></div>' +
         '<div class="zone"><div class="row"><div class="yes-wrap"><button class="btn yes" type="button" aria-label="Yes"><span class="lbl">Yes</span></button></div>' +
-        '<button class="btn no" type="button" aria-label="No"><span class="lbl">No</span></button></div></div><p class="pnote">Anonymous visit statistics only</p></section>';
+        '<button class="btn no" type="button" aria-label="No"><span class="lbl">No</span></button></div></div></section>';
     },
     knew: function () {
       return '<section class="scr knew" role="status"><p class="knew-t">I knew you would.<span class="hrt" aria-hidden="true">' + HEART + '</span></p>' +
@@ -477,22 +502,22 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     knew: function () {
       later(function () { var el = $('.knew-s'); if (el) el.classList.add('on'); }, 1500);
       later(function () { var el = $('.ghostb'); if (el) el.classList.add('on'); }, 2900);
-      $('.ghostb').addEventListener('click', function () { track('Clic sur « Continue »', 'ouvre le calendrier'); go('plan'); });
+      $('.ghostb').addEventListener('click', function () { track('continue_clicked', 'Clic sur « Continue »', 'ouvre le calendrier'); go('plan'); });
     },
     plan: function () {
       stage.querySelectorAll('[data-nav]').forEach(function (b) { b.addEventListener('click', function () { shiftMonth(+b.getAttribute('data-nav')); }); });
       renderCal(''); renderTimes();
     },
     card: function () {
-      track('Voit la carte d’invitation', frDate() + ' à ' + S.time);
+      track('invitation_viewed', 'Voit la carte d’invitation', frDate() + ' à ' + S.time, { date: isoDate(), time: S.time });
       $('[data-act="official"]').addEventListener('click', function () {
         go('final', 700);
-        S.confirmed = true; track('Clic sur « Make It Official »', 'rendez-vous confirmé : ' + frDate() + ' à ' + S.time);
+        S.confirmed = true; track('invitation_confirmed', 'Clic sur « Make It Official »', 'rendez-vous confirmé : ' + frDate() + ' à ' + S.time, { date: isoDate(), time: S.time });
         sentUpTo = LOG.length;
         send(Object.assign({ _subject: '✅ Rendez-vous confirmé : ' + frDate() + ' à ' + S.time, 'Réponse': 'OUI — confirmé', 'Jour': frDate(), 'Heure': S.time, 'Clics sur NON': String(S.attempts), 'Durée jusqu’ici': dur() }, base(), journey()))
           .then(function (ok) { S.sendOk = ok; showSent(); });
       });
-      $('[data-act="change"]').addEventListener('click', function () { track('Clic sur « Change my choice »', 'retourne au calendrier'); go('plan'); });
+      $('[data-act="change"]').addEventListener('click', function () { track('choice_changed', 'Clic sur « Change my choice »', 'retourne au calendrier'); go('plan'); });
     },
     final: function () { showSent(); }
   };
@@ -505,7 +530,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   function answeredYes(viaNo) {
     go('knew', 750);
     S.saidYes = true;
-    track('Clic sur OUI', viaNo ? 'via le bouton NON devenu « Fine — yes »' : S.attempts ? 'après ' + S.attempts + ' tentative' + (S.attempts > 1 ? 's' : '') + ' sur NON' : 'du premier coup');
+    track('yes_clicked', 'Clic sur OUI', viaNo ? 'via le bouton NON devenu « Fine — yes »' : S.attempts ? 'après ' + S.attempts + ' tentative' + (S.attempts > 1 ? 's' : '') + ' sur NON' : 'du premier coup', { no_attempts: S.attempts, via_no: !!viaNo });
     if (!S.sentYes) { S.sentYes = true; send(Object.assign({ _subject: '☕️ Elle a dit OUI à ton invitation (#' + VID + ')', 'Réponse': 'OUI', 'Clics sur NON': String(S.attempts), 'Après': dur() }, base())); }
   }
 
@@ -521,16 +546,21 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
         var m = ''; for (var i = 0; i < 16; i++) m += '<span class="mote' + (i % 2 ? ' b' : '') + '" style="left:' + (4 + (i * 37) % 92) + '%;width:' + (2 + i % 3) + 'px;height:' + (2 + i % 3) + 'px;animation-delay:' + (i * 0.9).toFixed(1) + 's;animation-duration:' + (11 + (i % 5) * 1.6) + 's"></span>';
         fx.innerHTML += m;
       }
+      var pg = PAGES[name]; pageView(pg[0], pg[1]);
+      if (name === 'knew') track('success_reached', 'Voit « I knew you would »');
+      if (name === 'plan') track('calendar_opened', 'Ouvre le calendrier', MN_FR[S.vm] + ' ' + S.vy, { month: S.vy + '-' + pad2(S.vm + 1) });
       binders[name]();
+      motes.mood(name === 'plan' && S.day ? 'time' : name);
     }, wait || 520);
   }
+  var PAGES = { ask: ['/', 'Question'], knew: ['/yes', 'I knew you would'], plan: ['/date', 'Choose a day'], card: ['/confirm', 'Our evening'], final: ['/final', 'It’s a meeting'] };
 
   // ─── The NO button ──────────────────────────────────────────────────
   function dodge(ev) {
     var now = Date.now(); if (now - S.last < 320) return; S.last = now;
     if (S.attempts >= GIVE) return;
     var a = ++S.attempts;
-    track('Clic sur NON', 'tentative ' + a + (a >= GIVE ? ' — le bouton NON abandonne et devient « Fine — yes »' : ' — le bouton s’est déplacé'));
+    track('no_clicked', 'Clic sur NON', 'tentative ' + a + (a >= GIVE ? ' — le bouton NON abandonne et devient « Fine — yes »' : ''), { attempt: a });
     var no = $('.no'), zone = $('.zone'), yw = $('.yes-wrap'), sub = $('.sub');
     sub.textContent = SUBS[a]; sub.className = 'sub s' + (a % 2);
     yw.style.transform = 'scale(' + (1 + a * 0.014).toFixed(3) + ')';
@@ -556,6 +586,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       best = [tx, ty]; break;
     }
     if (best) { S.dx = Math.round(best[0] - bx); S.dy = Math.round(best[1] - by); }
+    track('no_button_moved', 'Le bouton NON s’est déplacé', 'tentative ' + a, { attempt: a, dx: S.dx, dy: S.dy });
     var rot = Math.round((Math.random() - .5) * 80) / 10, sc = a >= 4 ? 0.96 : 1;
     no.style.transform = 'translate(' + S.dx + 'px,' + S.dy + 'px) rotate(' + rot + 'deg) scale(' + sc + ')';
   }
@@ -573,7 +604,7 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     var sm = startMonth(), lo = sm.y * 12 + sm.m, idx = S.vy * 12 + S.vm + delta;
     if (idx < lo || idx > lo + 11) return;
     S.vy = Math.floor(idx / 12); S.vm = idx % 12; mflip = !mflip;
-    track('Change de mois', MN_FR[S.vm] + ' ' + S.vy);
+    track('month_changed', 'Change de mois', MN_FR[S.vm] + ' ' + S.vy, { month: S.vy + '-' + pad2(S.vm + 1) });
     renderCal(delta > 0 ? 'n' : 'p');
   }
   function renderCal(dir) {
@@ -592,8 +623,8 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       b.addEventListener('click', function () {
         S.day = { y: S.vy, m: S.vm, d: +b.getAttribute('data-d') };
         if (S.time && isPast(S.time)) S.time = null;
-        track('Choisit un jour', frDate());
-        renderCal(''); renderTimes();
+        track('date_selected', 'Choisit un jour', frDate(), { selected_date: isoDate() });
+        renderCal(''); renderTimes(); motes.mood('time');
         setTimeout(function () { if (stage.scrollHeight > stage.clientHeight + 4) stage.scrollTo({ top: stage.scrollHeight, behavior: 'smooth' }); }, 80);
       });
     });
@@ -615,22 +646,24 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       '<p class="t-g">Afternoon</p><div class="times">' + group(TIMES.filter(function (t) { return +t.slice(0, 2) >= 12; })) + '</div>' +
       (S.time ? '<button class="btn yes" type="button" data-go><span class="lbl">See our meeting</span></button>' : '') + '</div>';
     tz.querySelectorAll('.tm').forEach(function (b) {
-      b.addEventListener('click', function () { S.time = b.getAttribute('data-t'); track('Choisit une heure', S.time + ' (' + frDate() + ')'); renderTimes(); clearTimers(); later(function () { go('card'); }, 850); });
+      b.addEventListener('click', function () { S.time = b.getAttribute('data-t'); track('time_selected', 'Choisit une heure', S.time + ' (' + frDate() + ')', { selected_time: S.time, selected_date: isoDate() }); renderTimes(); clearTimers(); later(function () { go('card'); }, 850); });
     });
-    var g = tz.querySelector('[data-go]'); if (g) g.addEventListener('click', function () { track('Clic sur « See our meeting »'); go('card'); });
+    var g = tz.querySelector('[data-go]'); if (g) g.addEventListener('click', function () { track('see_meeting_clicked', 'Clic sur « See our meeting »'); go('card'); });
   }
 
-  // ─── Music: starts softly on her first tap (browsers block autoplay) ──
+  // ─── Music: starts on the OPEN tap (browsers only allow sound after a tap) ──
   var MUSIC_VOL = 0.32;
   var audio = new Audio('nocturne.mp3'); audio.loop = true; audio.preload = 'auto';
-  var actx = null, gain = null, musicOn = false, userMuted = false;
+  var actx = null, gain = null, musicOn = false, everStarted = false;
   var snd = document.querySelector('.snd');
   function ui() { snd.classList.toggle('on', musicOn); snd.setAttribute('aria-pressed', String(musicOn)); snd.setAttribute('aria-label', musicOn ? 'Pause the music' : 'Play the music'); }
   function ramp(to, sec) {
     if (gain) { var t = actx.currentTime; gain.gain.cancelScheduledValues(t); gain.gain.setValueAtTime(gain.gain.value, t); gain.gain.linearRampToValueAtTime(to, t + sec); }
     else audio.volume = to;
   }
-  function musicPlay(label) {
+  // Starts (or resumes) playback. `kind` is 'start' or 'resume': the matching
+  // event is recorded only once the browser has really begun to play.
+  function musicPlay(kind) {
     try {
       if (!actx && (window.AudioContext || window.webkitAudioContext)) {
         actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -640,41 +673,126 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       if (actx && actx.state === 'suspended') actx.resume();
     } catch (e) { actx = null; gain = null; }
     if (!gain) audio.volume = 0;
-    var p = audio.play();
-    musicOn = true; ui(); ramp(MUSIC_VOL, 3);
-    if (p && p.catch) p.catch(function () { musicOn = false; ui(); });
-    if (label) track(label);
+    musicOn = true; ui();
+    var p;
+    try { p = audio.play(); } catch (e) { p = null; }
+    function ok() {
+      if (!musicOn) return;
+      ramp(MUSIC_VOL, kind === 'start' ? 3 : 1.2);
+      if (!everStarted) { everStarted = true; track('music_started', 'La musique démarre', kind === 'start' ? 'après OPEN' : 'via le bouton musique'); }
+      else track('music_resumed', 'Remet la musique');
+    }
+    if (p && p.then) p.then(ok).catch(function () { musicOn = false; ui(); track('music_blocked', 'La musique n’a pas pu démarrer'); });
+    else ok();
   }
-  function musicStop(label) { musicOn = false; ui(); ramp(0, 0.6); setTimeout(function () { if (!musicOn) audio.pause(); }, 650); if (label) track(label); }
-  snd.addEventListener('click', function () { if (musicOn) { userMuted = true; musicStop('Coupe la musique'); } else { userMuted = false; musicPlay('Remet la musique'); } });
-  function firstTouch(e) {
-    document.removeEventListener('pointerdown', firstTouch, true); document.removeEventListener('keydown', firstTouch, true);
-    if (musicOn || snd.contains(e.target) || userMuted || gate.contains(e.target)) return;
-    musicPlay('La musique démarre');
+  function musicPause() {
+    musicOn = false; ui(); ramp(0, 0.6);
+    setTimeout(function () { if (!musicOn) audio.pause(); }, 650);
+    track('music_paused', 'Coupe la musique');
   }
-  document.addEventListener('pointerdown', firstTouch, true); document.addEventListener('keydown', firstTouch, true);
+  snd.addEventListener('click', function () { if (musicOn) musicPause(); else musicPlay(everStarted ? 'resume' : 'start'); });
+  // Hidden tab: silence without counting it as a pause; back again: carry on where it was.
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') { if (musicOn) audio.pause(); } else if (musicOn) audio.play().catch(function () {}); });
 
-  // Try to start the music as soon as the page opens. Most phones refuse sound
-  // without a tap: then a short "Open" screen appears, and that tap starts it.
+  // ─── Candlelight particles ─────────────────────────────────────────
+  // Tiny champagne points and soft bubbles drifting upward, drawn on one canvas
+  // that always sits behind the content. Density follows the current screen.
+  var motes = (function () {
+    var cv = document.querySelector('.pc'), atmo = cv.parentNode;
+    var ctx = cv.getContext && cv.getContext('2d');
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)');
+    // count per 1000px of width · rise speed · share of bubbles · glow
+    var MOODS = {
+      gate:  { n: 7,  rise: 0.55, bub: 0.15, glow: 0.8 },
+      ask:   { n: 11, rise: 0.6,  bub: 0.2,  glow: 0.9 },
+      knew:  { n: 20, rise: 1.25, bub: 0.3,  glow: 1.1 },
+      plan:  { n: 6,  rise: 0.5,  bub: 0.1,  glow: 0.7 },
+      time:  { n: 4,  rise: 0.45, bub: 0.1,  glow: 0.6 },
+      card:  { n: 13, rise: 0.7,  bub: 0.25, glow: 1 },
+      final: { n: 24, rise: 0.85, bub: 0.35, glow: 1.25 }
+    };
+    var M = MOODS.gate, P = [], W = 0, H = 0, dpr = 1, raf = 0, lastT = 0, small = false, sprite = null, rgb = '214,193,156';
+    if (!ctx) return { mood: function () {}, into: function () {} };
+    function makeSprite() {
+      var c = document.createElement('canvas'), s = 64; c.width = c.height = s;
+      var g = c.getContext('2d'), gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      gr.addColorStop(0, 'rgba(' + rgb + ',1)'); gr.addColorStop(0.18, 'rgba(' + rgb + ',.55)'); gr.addColorStop(0.45, 'rgba(' + rgb + ',.12)'); gr.addColorStop(1, 'rgba(' + rgb + ',0)');
+      g.fillStyle = gr; g.fillRect(0, 0, s, s); sprite = c;
+    }
+    function size() {
+      var r = cv.getBoundingClientRect(); W = r.width; H = r.height; small = W < 600;
+      dpr = Math.min(window.devicePixelRatio || 1, small ? 1.5 : 2);
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    function target() { var n = M.n * Math.max(W, 320) / 1000 + M.n * 0.35; if (small) n *= 0.6; return Math.max(2, Math.round(Math.min(n, small ? 16 : 44))); }
+    function spawn(anywhere) {
+      var bub = Math.random() < M.bub;
+      return {
+        x: Math.random() * W, y: anywhere ? Math.random() * H : H + 10 + Math.random() * 40,
+        r: bub ? 2.2 + Math.random() * 2.6 : 0.5 + Math.random() * 1.3,
+        bub: bub, glow: !bub && Math.random() < 0.35,
+        vy: (0.004 + Math.random() * 0.01) * (small ? 0.85 : 1), sway: 6 + Math.random() * 14, ph: Math.random() * 6.28, fs: 0.00025 + Math.random() * 0.0004,
+        a: 0.16 + Math.random() * 0.34, tw: 0.0006 + Math.random() * 0.0012, life: 0, fade: 0
+      };
+    }
+    function draw(t) {
+      ctx.clearRect(0, 0, W, H);
+      for (var i = 0; i < P.length; i++) {
+        var p = P[i], x = p.x + Math.sin(t * p.fs + p.ph) * p.sway;
+        var al = p.a * (0.7 + 0.3 * Math.sin(t * p.tw + p.ph)) * Math.min(1, p.life / 1600) * (1 - p.fade) * Math.min(1, p.y / (H * 0.18));
+        if (al <= 0.003) continue;
+        if (p.bub) { ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, 6.2832); ctx.strokeStyle = 'rgba(' + rgb + ',' + (al * 0.55).toFixed(3) + ')'; ctx.lineWidth = 0.7; ctx.stroke(); }
+        else if (p.glow && !small) { var s = p.r * 9 * M.glow; ctx.globalAlpha = al * 0.55; ctx.drawImage(sprite, x - s / 2, p.y - s / 2, s, s); ctx.globalAlpha = 1; }
+        else { ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, 6.2832); ctx.fillStyle = 'rgba(' + rgb + ',' + al.toFixed(3) + ')'; ctx.fill(); }
+      }
+    }
+    function frame(t) {
+      raf = 0;
+      var dt = Math.min(64, lastT ? t - lastT : 16); lastT = t;
+      var want = target(), alive = 0;
+      for (var i = P.length - 1; i >= 0; i--) {
+        var p = P[i]; p.life += dt; p.y -= p.vy * M.rise * dt * (p.bub ? 0.8 : 1);
+        if (p.fade > 0) p.fade = Math.min(1, p.fade + dt / 1400); else alive++;
+        if (p.y < -20 || p.fade >= 1) P.splice(i, 1);
+      }
+      // too many for this screen: let a few fade out gently; too few: bring some in
+      for (var k = 0; k < P.length && alive > want; k++) if (!P[k].fade) { P[k].fade = 0.001; alive--; }
+      if (alive < want && Math.random() < 0.08) P.push(spawn(false));
+      draw(t);
+      loop();
+    }
+    function loop() { if (!raf && !reduce.matches && document.visibilityState !== 'hidden') raf = requestAnimationFrame(frame); }
+    function still() { P = []; for (var i = 0, n = Math.round(target() * 0.6); i < n; i++) { var p = spawn(true); p.life = 2000; P.push(p); } draw(0); }
+    function start() { size(); makeSprite(); if (reduce.matches) { still(); return; } lastT = 0; loop(); }
+    function seed() { for (var i = P.length, n = target(); i < n; i++) { var p = spawn(true); p.life = Math.random() * 800; P.push(p); } }
+    window.addEventListener('resize', function () { size(); if (reduce.matches) still(); });
+    document.addEventListener('visibilitychange', function () { lastT = 0; loop(); });
+    if (reduce.addEventListener) reduce.addEventListener('change', start);
+    return {
+      mood: function (name) { M = MOODS[name] || MOODS.ask; if (reduce.matches) still(); else if (P.length < target() * 0.5) seed(); },
+      into: function (parent) { if (cv.parentNode !== parent) { parent === atmo ? atmo.insertBefore(cv, atmo.children[1] || null) : parent.appendChild(cv); size(); if (reduce.matches) still(); } },
+      start: function () { start(); seed(); }
+    };
+  })();
+
+  // ─── Opening: the OPEN tap starts the transition, the music and the experience ──
   var gate = document.querySelector('.gate');
+  var opened = false;
   function openGate() {
-    gate.classList.add('out'); setTimeout(function () { gate.hidden = true; }, 900);
-    musicPlay('Ouvre l’invitation — la musique démarre');
+    if (opened) return; opened = true;
+    track('open_clicked', 'Clic sur « Open »');
+    musicPlay('start');
+    motes.into(document.querySelector('.atmo')); motes.mood('ask');
+    gate.classList.add('out');
+    setTimeout(function () { gate.hidden = true; }, 900);
     go('ask', 250);
   }
   gate.querySelector('button').addEventListener('click', openGate);
-  (function autoStart() {
-    audio.volume = MUSIC_VOL;
-    var p;
-    try { p = audio.play(); } catch (e) { p = null; }
-    if (p && p.then) p.then(function () { musicOn = true; ui(); track('La musique démarre automatiquement'); gate.hidden = true; })
-      .catch(function () { gate.hidden = false; gate.classList.add('in'); track('Écran « Open » affiché (lecture automatique bloquée par le navigateur)'); });
-    else { gate.hidden = false; gate.classList.add('in'); }
-  })();
 
-  stage.innerHTML = screens.ask(); binders.ask();
-  track('Arrive sur l’invitation', device());
+  track('session_started', 'Arrive sur l’invitation', device(), { referrer: origin(), lang: navigator.language || '' });
+  pageView('/open', 'Open');
+  motes.into(gate); motes.start(); motes.mood('gate');
   setTimeout(function () { send(Object.assign({ _subject: '👀 Nouvelle visite — #' + VID + ' (visite n° ' + VISIT + ')', 'Arrivée': hms() }, base())); }, 1200);
 })();
 </script>
