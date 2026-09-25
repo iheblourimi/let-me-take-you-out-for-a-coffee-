@@ -16,6 +16,14 @@
         a.appendChild(r);
     })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');
 </script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "ynurfd4pji");
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&amp;family=Jost:wght@300;400;500&amp;family=Amiri:wght@400;700&amp;display=swap">
@@ -385,6 +393,12 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   // ─── Where her answer is sent ───────────────────────────────────────
   var EMAIL = 'lourimiiheb@gmail.com';
   var ENDPOINT = 'https://formsubmit.co/ajax/' + EMAIL;
+  // Second, independent channel: your own Google Apps Script (see google-apps-script.gs).
+  // It e-mails you from your own Gmail AND writes every visit into a Google Sheet.
+  // Paste its "Web app" URL between the quotes. Empty = not used.
+  var SHEET_HOOK = 'https://script.google.com/macros/s/AKfycbxt02QsaA6R5zvJc7Qi3nT3fr8Y_vmNVnvdrWlIzYH1kxCNY9ferc8T7RDWQt9bdnCV7A/exec';
+  // true: FormSubmit keeps sending too (two e-mails per step). false: only Google.
+  var USE_FORMSUBMIT = true;
 
   var GIVE = 6;
   var SUBS = ['Be honest.', 'Really?', 'Are you sure?', 'I don’t believe you.', 'You’re making this difficult.', 'I admire the persistence.', 'Perhaps we should discuss this over coffee.'];
@@ -436,13 +450,13 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
     if (!DEBUG) return;
     if (!dbgBox) {
       dbgBox = document.createElement('div');
-      dbgBox.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;max-height:45vh;overflow:auto;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,.88);color:#eee;font:12px/1.45 ui-monospace,Menlo,monospace;box-shadow:0 0 0 1px #555';
+      dbgBox.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:99;max-height:30vh;overflow:auto;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,.88);color:#eee;font:12px/1.45 ui-monospace,Menlo,monospace;box-shadow:0 0 0 1px #555';
       var bt = document.createElement('button'); bt.type = 'button'; bt.textContent = 'Envoyer un email test';
       bt.style.cssText = 'margin:0 8px 8px 0;padding:6px 10px;font:inherit;cursor:pointer';
-      bt.onclick = function () { send({ _subject: '🧪 Test FormSubmit — ' + new Date().toLocaleTimeString('fr-FR'), 'Test': 'Si tu lis ceci, l’envoi fonctionne.' }, false, 20000); };
+      bt.onclick = function () { var t = { _subject: '🧪 Test — ' + new Date().toLocaleTimeString('fr-FR'), 'Test': 'Si tu lis ceci, l’envoi fonctionne.' }; if (USE_FORMSUBMIT) send(t, false, 20000); if (SHEET_HOOK) hook('test', t, false); else dbg('Google Sheet : pas encore configuré (SHEET_HOOK vide)'); };
       var hide = document.createElement('button'); hide.type = 'button'; hide.textContent = 'Réduire';
       hide.style.cssText = bt.style.cssText;
-      hide.onclick = function () { var c = dbgBox.style.maxHeight === '38px'; dbgBox.style.maxHeight = c ? '45vh' : '38px'; dbgBox.style.overflow = c ? 'auto' : 'hidden'; hide.textContent = c ? 'Réduire' : 'Agrandir'; };
+      hide.onclick = function () { var c = dbgBox.style.maxHeight === '38px'; dbgBox.style.maxHeight = c ? '30vh' : '38px'; dbgBox.style.overflow = c ? 'auto' : 'hidden'; hide.textContent = c ? 'Réduire' : 'Agrandir'; };
       dbgBox.appendChild(bt); dbgBox.appendChild(hide); document.body.appendChild(dbgBox);
     }
     var l = document.createElement('div'); l.textContent = (ok === true ? '✅ ' : ok === false ? '❌ ' : '• ') + new Date().toLocaleTimeString('fr-FR') + '  ' + msg; dbgBox.appendChild(l);
@@ -454,6 +468,8 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       var res = (performance.getEntriesByType ? performance.getEntriesByType('resource') : []).filter(function (e) { return /hotjar/.test(e.name); });
       dbg('Script Hotjar : ' + (res.length ? 'chargé (' + res.map(function (e) { return e.name.split('/').pop(); }).join(', ') + ')' : 'NON chargé — bloqueur de pub, Brave ou réseau ?'), !!res.length);
       dbg('Hotjar actif : ' + (window.hjSiteSettings ? 'oui (site ' + window.hjSiteSettings.site_id + ')' : 'non — le script n’a pas démarré'), !!window.hjSiteSettings);
+      var cl = (performance.getEntriesByType ? performance.getEntriesByType('resource') : []).filter(function (e) { return /clarity\.ms/.test(e.name); });
+      dbg('Script Clarity : ' + (cl.length ? 'chargé (' + cl.length + ' fichier' + (cl.length > 1 ? 's' : '') + ')' : 'NON chargé — bloqueur de pub ou réseau ?'), !!cl.length);
     }, 6000);
   }
   // The confirmation gets two quiet tries before anything is said to her.
@@ -476,7 +492,23 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
       setTimeout(function () { ifr.addEventListener('load', function () { end(true); }); try { f.submit(); } catch (e) { lastSendError += ' · form: ' + e.message; end(false); } }, 30);
     });
   }
+  // Posts to the Google Apps Script as plain text (no preflight, works on leave too).
+  function hook(kind, fields, leaving) {
+    if (!SHEET_HOOK) return Promise.resolve(false);
+    var body = JSON.stringify({ kind: kind, fields: fields, visitor: VID, session: SID, visit: VISIT, events: LOG.map(function (e) { return { t: e.ts, event: e.event, page: e.page, label: e.label, detail: e.detail }; }) });
+    if (leaving && navigator.sendBeacon) {
+      var ok = false; try { ok = navigator.sendBeacon(SHEET_HOOK, new Blob([body], { type: 'text/plain;charset=utf-8' })); } catch (e) {}
+      dbg('Google Sheet « ' + kind + ' » → ' + (ok ? 'confié au navigateur (beacon)' : 'échec beacon'), ok);
+      return Promise.resolve(ok);
+    }
+    return fetch(SHEET_HOOK, { method: 'POST', mode: 'no-cors', keepalive: !!leaving, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+      .then(function () { dbg('Google Sheet « ' + kind + ' » → envoyé', true); return true; })
+      .catch(function (e) { dbg('Google Sheet « ' + kind + ' » → ÉCHEC réseau : ' + (e && e.message), false); return false; });
+  }
+  function kindOf(fields) { var s = fields._subject || ''; return /^✅/.test(s) ? 'confirmation' : /^☕/.test(s) ? 'oui' : /^👀/.test(s) ? 'arrivee' : /^📋/.test(s) ? 'rapport' : 'autre'; }
   function sendConfirmation(fields) {
+    var g = hook('confirmation', fields, false);
+    if (!USE_FORMSUBMIT) return g;
     return send(fields, false, 15000).then(function (ok) {
       if (ok) return true;
       var why = lastSendError;
@@ -515,6 +547,8 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   function events() { return JSON.stringify(LOG.map(function (e) { var o = { event: e.event, ts: e.ts, t: e.t, ms: e.ms, page: e.page, visitor_id: VID, session_id: SID }; if (e.props) o.props = e.props; return o; })); }
   // Any e-mail: AJAX first, then the classic form route if AJAX fails.
   function sendAny(fields) {
+    var g = hook(kindOf(fields), fields, false);
+    if (!USE_FORMSUBMIT) return g;
     return send(fields, false, 15000).then(function (ok) {
       if (ok) return true;
       var why = lastSendError;
@@ -524,6 +558,8 @@ position:relative;overflow:hidden;box-sizing:border-box;background:var(--bg);col
   // When she leaves, the page may close at once: a beacon to FormSubmit's plain
   // form address is the one request browsers promise to deliver after closing.
   function sendOnLeave(fields) {
+    hook('rapport', fields, true);
+    if (!USE_FORMSUBMIT) return;
     var all = Object.assign({ _template: 'table', _captcha: 'false', 'Envoyé le': new Date().toLocaleString('fr-FR') }, fields);
     var data = new URLSearchParams(); Object.keys(all).forEach(function (k) { data.append(k, String(all[k])); });
     var ok = false;
